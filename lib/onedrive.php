@@ -6,7 +6,7 @@
 		static $api_url = 'https://graph.microsoft.com/v1.0';
 		static $oauth_url = 'https://login.microsoftonline.com/common/oauth2/v2.0';
 
-		//ÑéÖ¤URL£¬ä¯ÀÀÆ÷·ÃÎÊ¡¢ÊÚÈ¨
+		//éªŒè¯URLï¼Œæµè§ˆå™¨è®¿é—®ã€æˆæƒ
 		static function authorize_url(){
 			$client_id = self::$client_id;
 			$scope = urlencode("offline_access files.readwrite.all");
@@ -20,44 +20,21 @@
 			return $url;
 		}
 
-		//Ê¹ÓÃ $code, »ñÈ¡ $refresh_token
+		//ä½¿ç”¨ $code, è·å– $refresh_token
 		static function authorize($code = ""){
 			$client_id = self::$client_id;
 			$client_secret = self::$client_secret;
 			$redirect_uri = self::$redirect_uri;
-			$url = self::$oauth_url."/token";
-			//$post_data = "client_id={$client_id}&redirect_uri={$redirect_uri}&client_secret={$client_secret}&code={$code}&grant_type=authorization_code";
-			//fetch::$headers = "Content-Type: application/x-www-form-urlencoded";
-            $post_data=[
-                'client_id'=>$client_id,
-                'redirect_uri'=>$redirect_uri,
-                'client_secret'=>$client_secret,
-                'code'=>$code,
-                'grant_type'=>'authorization_code'
-            ];
-            $post_data=http_build_query($post_data);
-            $ch = curl_init();
-            if(substr($url,0,5)=='https'){
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Ìø¹ıÖ¤Êé¼ì²é
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, true);  // ´ÓÖ¤ÊéÖĞ¼ì²éSSL¼ÓÃÜËã·¨ÊÇ·ñ´æÔÚ
-            }
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
-            $response = curl_exec($ch);
-            if($error=curl_error($ch)){
-                die($error);
-            }
-            curl_close($ch);
 
-			//$resp = fetch::post($url, $post_data);
-			$data = json_decode($response, true);
+			$url = self::$oauth_url."/token";
+			$post_data = "client_id={$client_id}&redirect_uri={$redirect_uri}&client_secret={$client_secret}&code={$code}&grant_type=authorization_code";
+			fetch::$headers = "Content-Type: application/x-www-form-urlencoded";
+			$resp = fetch::post($url, $post_data);
+			$data = json_decode($resp->content, true);
 			return $data;
 		}
 
-		//Ê¹ÓÃ $refresh_token£¬»ñÈ¡ $access_token
+		//ä½¿ç”¨ $refresh_tokenï¼Œè·å– $access_token
 		static function get_token($refresh_token){
 			$client_id = self::$client_id;
 			$client_secret = self::$client_secret;
@@ -65,43 +42,31 @@
 
 			$request['url'] = self::$oauth_url."/token";
 			$request['post_data']  = "client_id={$client_id}&redirect_uri={$redirect_uri}&client_secret={$client_secret}&refresh_token={$refresh_token}&grant_type=refresh_token";
-			//$request['headers']= "Content-Type: application/x-www-form-urlencoded";
-			//$resp = fetch::post($request);
-            $post_data=[
-                'client_id'=>$client_id,
-                'redirect_uri'=>$redirect_uri,
-                'client_secret'=>$client_secret,
-                'refresh_token'=>$refresh_token,
-                'grant_type'=>'refresh_token'
-            ];
-            $post_data=http_build_query($post_data);
-            $ch = curl_init();
-            if(substr($request['url'],0,5)=='https'){
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Ìø¹ıÖ¤Êé¼ì²é
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, true);  // ´ÓÖ¤ÊéÖĞ¼ì²éSSL¼ÓÃÜËã·¨ÊÇ·ñ´æÔÚ
-            }
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_URL, $request['url']);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
-            $response = curl_exec($ch);
-            if($error=curl_error($ch)){
-                die($error);
-            }
-            curl_close($ch);
-			$data = json_decode($response, true);
+			$request['headers']= "Content-Type: application/x-www-form-urlencoded";
+			$resp = fetch::post($request);
+			$data = json_decode($resp->content, true);
 			return $data;
 		}
 
-		//»ñÈ¡ $access_token, ´ø»º´æ
+		//è·å– $access_token, å¸¦ç¼“å­˜
 		static function access_token(){
-            $token=getToken();
-            return $token;
+			$token = config('@token');
+			if($token['expires_on'] > time()+600){
+				return $token['access_token'];
+			}else{
+				$refresh_token = config('refresh_token');
+				$token = self::get_token($refresh_token);
+				if(!empty($token['refresh_token'])){
+					$token['expires_on'] = time()+ $token['expires_in'];
+					config('@token', $token);
+					return $token['access_token'];
+				}
+			}
+			return "";
 		}
 
 
-		// Éú³ÉÒ»¸örequest£¬´øtoken
+		// ç”Ÿæˆä¸€ä¸ªrequestï¼Œå¸¦token
 		static function request($path="/", $query=""){
 			$path = self::urlencode($path);
 			$path = empty($path)?'/':":/{$path}:/";
@@ -112,22 +77,34 @@
 		}
 
 		
-		//·µ»ØÄ¿Â¼ĞÅÏ¢
+		//è¿”å›ç›®å½•ä¿¡æ¯
 		static function dir($path="/"){
 			$request = self::request($path, "children?select=name,size,folder,@microsoft.graph.downloadUrl,lastModifiedDateTime");
 			$items = array();
 			self::dir_next_page($request, $items);
+			//ä¸åœ¨åˆ—è¡¨æ˜¾ç¤ºçš„æ–‡ä»¶å¤¹
+			$hide_list = explode(PHP_EOL,config('onedrive_hide'));
+			if(is_array($hide_list) && count($hide_list)>0){
+				foreach($hide_list as $hide_dir){
+					foreach($items as $key=>$_array){
+						$buf = trim($hide_dir);
+						if($buf && stristr($key, $buf))unset($items[$key]);
+					}
+				}
+			}
 			return $items;
 		}
 
-		//Í¨¹ı·ÖÒ³»ñÈ¡Ò³ÃæËùÓĞitem
+		//é€šè¿‡åˆ†é¡µè·å–é¡µé¢æ‰€æœ‰item
 		static function dir_next_page($request, &$items, $retry=0){
 			$resp = fetch::get($request);
+			
 			$data = json_decode($resp->content, true);
 			if(empty($data) && $retry < 3){
 				$retry += 1;
 				return self::dir_next_page($request, $items, $retry);
 			}
+			
 			foreach((array)$data['value'] as $item){
 				//var_dump($item);
 				$items[$item['name']] = array(
@@ -155,7 +132,7 @@
 		//	return $resp->content;
 		//}
 
-		//ÎÄ¼şËõÂÔÍ¼Á´½Ó
+		//æ–‡ä»¶ç¼©ç•¥å›¾é“¾æ¥
 		static function thumbnail($path,$size='large'){
 			$request = self::request($path,"thumbnails/0?select={$size}");
 			$resp = fetch::get($request);
@@ -164,7 +141,16 @@
 			return @$data[$size]['url'];
 		}
 
-		//ÎÄ¼şÉÏ´«º¯Êı
+		static function share($path){
+			$request = self::request($path,"createLink");
+			$post_data['type'] = 'view';
+			$post_data['scope'] = 'anonymous';
+			$resp = fetch::post($request, json_encode($post_data));
+			$data = json_decode($resp->content, true);
+			return $data;
+		}
+
+		//æ–‡ä»¶ä¸Šä¼ å‡½æ•°
 		static function upload($path,$content){
 			$request = self::request($path,"content");
 			$request['post_data'] = $content;
@@ -233,7 +219,7 @@
 		}
 
 		static function file_content($file, $offset, $length){
-			$handler = fopen($file, "rb") OR die('»ñÈ¡ÎÄ¼şÄÚÈİÊ§°Ü');
+			$handler = fopen($file, "rb") OR die('è·å–æ–‡ä»¶å†…å®¹å¤±è´¥');
 			fseek($handler, $offset);
 			
 			return fread($handler, $length);

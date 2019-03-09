@@ -45,6 +45,7 @@ if (!function_exists('config')) {
 				} else {
 					$configs[$file][$key] = $value;
 				}
+
 			} else {
 				if (is_null($value)) {
 					return unlink($file_name);
@@ -64,71 +65,16 @@ if (!function_exists('config')) {
 		}
 	}
 }
-/**
- * config('name');
- * config('name@file');
- * config('@file');
- */
-if (!function_exists('cache')) {
-	!defined('CACHE_PATH') && define('CACHE_PATH', ROOT . 'cache/');
-	function cache($key, $value = null, $ttl=null) {
-		$redis=new RedisDrive(config('redis_password'));
-        if(!$redis){
-            return false;
-        }
-		$redis->key=$key.md5($key);//为了可读性，做一次转换
-		if (is_null($value)) {
-            if($redis->exists()){
-                return (string)($redis->get());
-            }
-		} else {
-		    if(!$ttl){//when ttl is null
-                $redis->value=(string)$value;
-                $redis->set();
-                return true;
-            }
-		    $redis->value=(string)$value;
-		    $redis->expire=$ttl;
-		    $redis->setex();
-			return true;
-		}
-	}
-}
 
-//获取token专用函数
-if(!function_exists('getToken')){
-    function getToken(){
-        $token=cache('access_token');
-        if($token && $token!=''){
-            return $token;
-        }
-        $refresh_token=cache('refresh_token');
-        if($refresh_token){
-            $token = onedrive::get_token($refresh_token);
-            cache('access_token',$token['access_token'], $token['expires_in']-200);
-            cache('refresh_token',$token['refresh_token']);
-            return $token['access_token'];
-        }
-
-    }
-}
-
-
+// cache
+define('CACHE_PATH', ROOT.'cache/');
+cache::$type = empty( config('cache_type') )?'secache':config('cache_type');
 
 
 if (!function_exists('db')) {
 	function db($table) {
 		return db::table($table);
 	}
-}
-
-if(!function_exists('dd')){
-    function dd($dump=null){
-        if($dump){
-            var_dump($dump);
-        }
-        die();
-    }
 }
 
 if (!function_exists('view')) {
@@ -146,6 +92,40 @@ if (!function_exists('_')) {
 if (!function_exists('e')) {
 	function e($str) {
 		echo $str;
+	}
+}
+
+if (!function_exists('str_is')) {
+	function str_is($pattern, $value)
+	{
+		if (is_null($pattern)) {
+			$patterns = [];
+		}
+		$patterns = ! is_array($pattern) ? [$pattern] : $pattern;
+		if (empty($patterns)) {
+			return false;
+		}
+		foreach ($patterns as $pattern) {
+			if ($pattern == $value) {
+				return true;
+			}
+			$pattern = preg_quote($pattern, '#');
+			$pattern = str_replace('\*', '.*', $pattern);
+			if (preg_match('#^'.$pattern.'\z#u', $value) === 1) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+if (!function_exists('get_domain')) {
+	function get_domain($url=null)
+	{
+		if (is_null($url)) {
+			return $_SERVER['HTTP_HOST'];
+		}
+		return strstr(ltrim(strstr($url, '://'), '://'), '/', true);
 	}
 }
 

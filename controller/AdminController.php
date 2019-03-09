@@ -1,16 +1,15 @@
 <?php 
 define('VIEW_PATH', ROOT.'view/admin/');
 class AdminController{
-    private $redis;
 	static $default_config = array(
 	  'site_name' =>'OneIndex',
 	  'password' => 'oneindex',
-	  'style'=>'nexmoe',//统一使用这个样式，前端懒得改了
+	  'style'=>'material',
 	  'onedrive_root' =>'',
+	  'cache_type'=>'secache',
 	  'cache_expire_time' => 3600,
 	  'cache_refresh_time' => 600,
 	  'root_path' => '?',
-        'redis_password'=>false,//默认redis无密码，如需有密码请改成密码，注意加单引号
 	  'show'=> array (
 	  	'stream'=>['txt'],
 	    'image' => ['bmp','jpg','jpeg','png','gif'],
@@ -24,8 +23,7 @@ class AdminController{
 	  'images'=>['home'=>false,'public'=>false, 'exts'=>['jpg','png','gif','bmp']]
 	);
 	
-	public function __construct(){
-		$this->redis=new RedisDrive(config('redis_password'));
+	function __construct(){
 	}
 
 	function login(){
@@ -33,7 +31,7 @@ class AdminController{
 			setcookie('admin', md5(config('password').config('refresh_token')) );
 			return view::direct(get_absolute_path(dirname($_SERVER['SCRIPT_NAME'])).'?/admin/');
 		}
-		return view::load('login');
+		return view::load('login')->with('title', '系统管理');
 	}
 
 	function logout(){
@@ -42,37 +40,59 @@ class AdminController{
 	}
 
 	function settings(){
-		
+		$message = false;
+
 		if($_POST){
-
-			config('site_name',$_POST['site_name']);
-			config('style',$_POST['style']);
 			
-			config('onedrive_root',get_absolute_path($_POST['onedrive_root']));
+			if ($this->cache_exists($_POST['cache_type'])) {
+				$message = '保存成功';
+				config('cache_type', $_POST['cache_type']);
+			} else {
+				$message = '缓存类型不可用，请确认已经安装了该拓展。';
+				config('cache_type', 'secache');
+			}
 
-			config('cache_expire_time',intval($_POST['cache_expire_time']));
-
+			config('site_name', $_POST['site_name']);
+			config('style', $_POST['style']);
+			config('onedrive_root', get_absolute_path($_POST['onedrive_root']));
+			config('onedrive_hide', $_POST['onedrive_hide']);
+			config('onedrive_hotlink', $_POST['onedrive_hotlink']);
+			config('cache_expire_time', intval($_POST['cache_expire_time']));
 			$_POST['root_path'] = empty($_POST['root_path'])?'?':'';
-			config('root_path',$_POST['root_path']);
+			config('root_path', $_POST['root_path']);
 		}
+
 		$config = config('@base');
-		return view::load('settings')->with('config', $config);
+
+		return view::load('settings')->with('config', $config)->with('message', $message);
+	}
+
+	/**
+	 * 判断缓存类型
+	 *
+	 * @param string $cache_type 缓存类型
+	 * @return void
+	 */
+	function cache_exists($cache_type){
+		// 需要判断环境的缓存类型
+		$_cache_type = [
+			'redis',
+			'memcache',
+		];
+
+		if (in_array($cache_type, $_cache_type)) {
+			return class_exists(ucfirst($cache_type));
+		}
+
+		return true;
 	}
 
 	function cache(){
 		if(!is_null($_POST['clear'])){
-
-            $keys=$this->redis->keys();
-            foreach ($keys as $key){
-                if(strpos($key,'access_token') === false && strpos($key,'refresh_token')===false ){
-                    $this->redis->key=$key;
-                    $this->redis->del();
-                }
-            }
+			cache::clear();
 			$message = "清除缓存成功";
 		}elseif ( !is_null($_POST['refresh']) ){
-			set_time_limit(0);
-			$this->_refresh_cache(get_absolute_path(config('onedrive_root')));
+			oneindex::refresh_cache(get_absolute_path(config('onedrive_root')));
 			$message = "重建缓存成功";
 		}
 		return view::load('cache')->with('message', $message);
@@ -89,17 +109,6 @@ class AdminController{
 		return view::load('images')->with('config', $config);;
 	}
 
-	public function _refresh_cache($path){
-		$items = onedrive::dir($path);
-		if(is_array($items)){
-			cache('dir_'.$path, json_encode($items),config('cache_expire_time'));
-		}
-		foreach((array)$items as $item){
-		    if($item['folder']){
-		        $this->_refresh_cache($path.$item['name'].'/');
-		    }
-		}
-	}
 
 	function show(){
 		if(!empty($_POST) ){
@@ -192,13 +201,10 @@ class AdminController{
 	function install_3(){
 		$data = onedrive::authorize($_GET['code']);
 		if(!empty($data['refresh_token'])){
-			//config('refresh_token',$data['refresh_token']);
-            cache('refresh_token', $data['refresh_token']/*, $data['expires_in']-200*/);
-            cache('access_token',$data['access_token'],$data['expires_in']-200);
-			//config('@token', $data);
-            return view::load('install/install_3')->with('refresh_token',$data['refresh_token']);
+			config('refresh_token',$data['refresh_token']);
+			config('@token', $data);
 		}
-		return false;
+		return view::load('install/install_3')->with('refresh_token',$data['refresh_token']);
 		
 	}
 }

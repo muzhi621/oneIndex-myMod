@@ -10,11 +10,10 @@ require  __DIR__.'/init.php';
 /**
  *    程序安装
  */
-if( is_null( cache('refresh_token') ) ){
+if( empty( config('refresh_token') ) ){
 	route::any('/','AdminController@install');
 }
-//预置access_token
-getToken();
+
 /**
  *    系统后台
  */
@@ -36,6 +35,7 @@ route::group(function(){
 });
 //登陆
 route::any('/login','AdminController@login');
+
 //跳转到登陆
 route::any('/admin/',function(){
 	return view::direct(get_absolute_path(dirname($_SERVER['SCRIPT_NAME'])).'?/login');
@@ -47,11 +47,9 @@ define('VIEW_PATH', ROOT.'view/'.(config('style')?config('style'):'material').'/
 /**
  *    OneImg
  */
-
 $images = config('images@base');
 if( ($_COOKIE['admin'] == md5(config('password').config('refresh_token')) || $images['public']) ){
 	route::any('/images','ImagesController@index');
-	route::any('/images/upload','ImagesController@ajaxUploadImg');
 	if($images['home']){
 		route::any('/','ImagesController@index');
 	}
@@ -61,4 +59,38 @@ if( ($_COOKIE['admin'] == md5(config('password').config('refresh_token')) || $im
 /**
  *    列目录
  */
-route::any('{path:#all}','IndexController@index');
+route::group(function () {
+	$hotlink = config('onedrive_hotlink');
+
+	// 未启用防盗链
+	if (!$hotlink) {
+		return true;
+	}
+	// referer 不存在
+	if (!isset($_SERVER['HTTP_REFERER'])) {
+		return true;
+	}
+
+	$referer_domain = get_domain($_SERVER['HTTP_REFERER']);
+	// 当前域本身
+	if (str_is(get_domain(), $referer_domain)) {
+		return true;
+	}
+
+	// 白名单
+	$hotlinks = explode(';', $hotlink);
+	$referer = false;
+	
+	foreach ($hotlinks as $_hotlink) {
+		if (str_is(trim($_hotlink), $referer_domain)) {
+			$referer = true;
+		}
+	}
+	if (!$referer) {
+		header('HTTP/1.1 403 Forbidden');
+	}
+
+	return $referer;
+}, function() {
+    route::any('{path:#all}','IndexController@index');
+});
