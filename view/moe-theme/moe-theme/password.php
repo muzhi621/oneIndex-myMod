@@ -1,5 +1,7 @@
 <?php view::layout('layout')?>
+
 <?php view::begin('content');?>
+	
 <div class="mdui-container-fluid">
 	<div class="mdui-col-md-6 mdui-col-offset-md-3">
 	  <center><h1 class="mdui-typo-display-2-opacity">输入密码进行查看</h1></center>
@@ -16,5 +18,7 @@
 		  </button>
 	  </form>
 	</div>
+	
 </div>
+
 <?php view::end('content');?>

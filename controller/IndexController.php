@@ -5,37 +5,44 @@ class IndexController{
 	private $path;
 	private $items;
 	private $time;
-
 	function __construct(){
+        //分页页数
+        $this->z_page = 50;
+      
 		//获取路径和文件名
 		$paths = explode('/', rawurldecode($_GET['path']));
 		if(substr($_SERVER['REQUEST_URI'], -1) != '/'){
 			$this->name = array_pop($paths);
 		}
-		$this->url_path = get_absolute_path(join('/', $paths));
+        preg_match_all("(\.page\-([0-9]*)/$)",get_absolute_path(join('/', $paths)),$mat);
+        if(empty($mat[1][0]))
+        	$this->page = 1;
+        else
+            $this->page = $mat[1][0];
+        
+		$this->url_path = preg_replace("(\.page\-[0-9]*/$)","",get_absolute_path(join('/', $paths)));
+        
 		$this->path = get_absolute_path(config('onedrive_root').$this->url_path);
 		//获取文件夹下所有元素
 		$this->items = $this->items($this->path);
 	}
-
 	
 	function index(){
 		//是否404
 		$this->is404();
-
 		$this->is_password();
-
 		header("Expires:-1");
 		header("Cache-Control:no_cache");
 		header("Pragma:no-cache");
-
-		if(!empty($this->name)){//file
+		
+        $fName = $this->name;
+      
+		if(!empty($fName)){//file
 			return $this->file();
 		}else{//dir
 			return $this->dir();
 		}
 	}
-
 	//判断是否加密
 	function is_password(){
 		if(empty($this->items['.password'])){
@@ -48,16 +55,14 @@ class IndexController{
 		list($password) = explode("\n",$password);
 		$password = trim($password);
 		unset($this->items['.password']);
-		if(!empty($password) && strcmp($password, $_COOKIE[md5($this->path)]) === 0){
+		if(!empty($password) && $password == $_COOKIE[md5($this->path)]){
 			return true;
 		}
-
 		$this->password($password);
 		
 	}
-
 	function password($password){
-		if(!empty($_POST['password']) && strcmp($password, $_POST['password']) === 0){
+		if(!empty($_POST['password']) && $password == $_POST['password']){
 			setcookie(md5($this->path), $_POST['password']);
 			return true;
 		}
@@ -65,7 +70,6 @@ class IndexController{
 		echo view::load('password')->with('navs',$navs);
 		exit();
 	}
-
 	//文件
 	function file(){
 		$item = $this->items[$this->name];
@@ -80,14 +84,11 @@ class IndexController{
 		}
 		header('Location: '.$url);
 	}
-
-
 	
 	//文件夹
 	function dir(){
 		$root = get_absolute_path(dirname($_SERVER['SCRIPT_NAME'])).config('root_path');
 		$navs = $this->navs();
-
 		if($this->items['index.html']){
 			$this->items['index.html']['path'] = get_absolute_path($this->path).'index.html';
 			$index = $this->get_content($this->items['index.html']);
@@ -95,7 +96,6 @@ class IndexController{
 			echo $index;
 			exit();
 		}
-
 		if($this->items['README.md']){
 			$this->items['README.md']['path'] = get_absolute_path($this->path).'README.md';
 			$readme = $this->get_content($this->items['README.md']);
@@ -104,7 +104,6 @@ class IndexController{
 			//不在列表中展示
 			unset($this->items['README.md']);
 		}
-
 		if($this->items['HEAD.md']){
 			$this->items['HEAD.md']['path'] = get_absolute_path($this->path).'HEAD.md';
 			$head = $this->get_content($this->items['HEAD.md']);
@@ -113,15 +112,24 @@ class IndexController{
 			//不在列表中展示
 			unset($this->items['HEAD.md']);
 		}
+        
+        $this->zongye = ceil(count($this->items) / $this->z_page);
+      
+        if($this->page*$this->z_page >= count($this->items))
+          $this->page = $this->zongye;
+        
+      
 		return view::load('list')->with('title', 'index of '. urldecode($this->url_path))
 					->with('navs', $navs)
 					->with('path',join("/", array_map("rawurlencode", explode("/", $this->url_path)))  )
+					->with('fullpath',$this->url_path)
 					->with('root', $root)
-					->with('items', $this->items)
+					->with('items', array_slice($this->items,$this->z_page*($this->page-1),$this->z_page))
 					->with('head',$head)
-					->with('readme',$readme);
+					->with('readme',$readme)
+					->with('page',$this->page)
+					->with('zongye',$this->zongye);
 	}
-
 	function show($item){
 		$root = get_absolute_path(dirname($_SERVER['SCRIPT_NAME'])).(config('root_path')?'?/':'');
 		$ext = strtolower(pathinfo($item['name'], PATHINFO_EXTENSION));
@@ -134,14 +142,12 @@ class IndexController{
 		$uri = onedrive::urlencode(get_absolute_path($this->url_path.'/'.$this->name));
 		$data['url'] = $http_type.$_SERVER['HTTP_HOST'].$root.$uri;
 		
-
 		$show = config('show');
 		foreach($show as $n=>$exts){
 			if(in_array($ext,$exts)){
 				return view::load('show/'.$n)->with($data);
 			}
 		}
-
 		header('Location: '.$item['downloadUrl']);
 	}
 	//缩略图
@@ -157,7 +163,6 @@ class IndexController{
 		$item['thumb'] .= strpos($item['thumb'], '?')?'&':'?';
 		return $item['thumb']."width={$width}&height={$height}";
 	}
-
 	//文件夹下元素
 	function items($path, $fetch=false){
 		$items = cache::get('dir_'.$this->path, function(){
@@ -165,7 +170,6 @@ class IndexController{
 		}, config('cache_expire_time'));
 		return $items;
 	}
-
 	function navs(){
 		$root = get_absolute_path(dirname($_SERVER['SCRIPT_NAME'])).config('root_path');
 		$navs['/'] = get_absolute_path($root.'/');
@@ -181,7 +185,6 @@ class IndexController{
 		
 		return $navs;
 	}
-
 	static function get_content($item){
 		$content = cache::get('content_'.$item['path'], function() use ($item){
 			$resp = fetch::get($item['downloadUrl']);
@@ -191,18 +194,15 @@ class IndexController{
 		}, config('cache_expire_time') );
 		return $content;
 	}
-
 	//时候404
 	function is404(){
 		if(!empty($this->items[$this->name]) || (empty($this->name) && is_array($this->items)) ){
 			return false;
 		}
-
 		http_response_code(404);
 		view::load('404')->show();
 		die();
 	}
-
 	function __destruct(){
 		if (!function_exists("fastcgi_finish_request")) {
 			return;
